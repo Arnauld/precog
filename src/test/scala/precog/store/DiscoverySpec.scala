@@ -2,8 +2,8 @@ package precog.store
 
 import org.specs2.mutable._
 import scala.Array
-import java.util.Comparator
 import annotation.tailrec
+import precog.util.{RichComparator, ArrayComparator}
 
 /**
  *
@@ -37,30 +37,9 @@ class DiscoverySpec extends Specification {
 
 }
 
-trait RichComparator[A] extends Comparator[A] {
-  def between(value:A, min:A, max:A):Boolean = compare(value, min) >= 0 && compare(value, max) <= 0
-}
 
-object ArrayComparator extends RichComparator[Array[Byte]] {
-  def compare(o1: Array[Byte], o2: Array[Byte]) = {
-    val len1 = o1.length
-    val len2 = o2.length
-    @tailrec
-    def compare0(idx:Int):Int = {
-      if (idx < len1 && idx < len2) {
-        val a = (o1(idx) & 0xff)
-        val b = (o2(idx) & 0xff)
-        if (a != b)
-           a - b
-        else
-          compare0(idx+1)
-      }
-      else
-        len1 - len2
-    }
-    compare0(0)
-  }
-}
+
+
 
 class BasicStore(comparator:RichComparator[Array[Byte]]) extends DiskStore {
   private var values: Map[Array[Byte], Array[Byte]] = Map()
