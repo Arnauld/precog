@@ -13,3 +13,6 @@ libraryDependencies ++= Seq(
 resolvers ++= Seq("Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
 				  "snapshots" at "http://oss.sonatype.org/content/repositories/snapshots",
                   "releases"  at "http://oss.sonatype.org/content/repositories/releases")
+
+// Style check
+org.scalastyle.sbt.ScalastylePlugin.Settings

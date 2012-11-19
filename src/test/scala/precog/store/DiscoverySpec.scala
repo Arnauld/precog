@@ -27,7 +27,6 @@ class DiscoverySpec extends Specification {
     }
   }
 
-
   def countReader(count:Int):Reader[Int] = More( _ match {
       case Some(v) =>
         countReader(count+1)
@@ -36,10 +35,6 @@ class DiscoverySpec extends Specification {
     })
 
 }
-
-
-
-
 
 class BasicStore(comparator:RichComparator[Array[Byte]]) extends DiskStore {
   private var values: Map[Array[Byte], Array[Byte]] = Map()
