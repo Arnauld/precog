@@ -6,7 +6,7 @@ import annotation.tailrec
  *
  * @author <a href="http://twitter.com/aloyer">@aloyer</a>
  */
-object ArrayComparator extends RichComparator[Array[Byte]] {
+object BytesComparator extends RichComparator[Array[Byte]] {
   def compare(o1: Array[Byte], o2: Array[Byte]) = {
     val len1 = o1.length
     val len2 = o2.length

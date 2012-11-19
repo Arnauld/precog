@@ -3,7 +3,7 @@ package precog.store
 import org.specs2.mutable._
 import scala.Array
 import annotation.tailrec
-import precog.util.{RichComparator, ArrayComparator}
+import precog.util.{RichComparator, BytesComparator}
 
 /**
  *
@@ -15,7 +15,7 @@ class DiscoverySpec extends Specification {
 
   "A user" should {
     "have a basic understanding of how things are used" in {
-      val store = new BasicStore(ArrayComparator)
+      val store = new BasicStore(BytesComparator)
       store.put("areuhh", "what!?")
       store.put("argh0", "humpf")
       store.put("argh1", "erf")
