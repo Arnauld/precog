@@ -15,7 +15,7 @@ class DiscoverySpec extends Specification {
 
   "A user" should {
     "have a basic understanding of how things are used" in {
-      val store = new BasicStore(BytesComparator)
+      val store = new BasicStore()
       store.put("areuhh", "what!?")
       store.put("argh0", "humpf")
       store.put("argh1", "erf")
@@ -36,7 +36,8 @@ class DiscoverySpec extends Specification {
 
 }
 
-class BasicStore(comparator:RichComparator[Array[Byte]]) extends DiskStore {
+class BasicStore() extends DiskStore {
+  private val comparator:RichComparator[Array[Byte]] = BytesComparator
   private var values: Map[Array[Byte], Array[Byte]] = Map()
 
   def put(key: Array[Byte], value: Array[Byte]) {
