@@ -6,13 +6,12 @@ import precog.util.{Bytes, BytesComparator}
 import java.util.concurrent.atomic.AtomicLong
 import scala.Array
 import org.specs2.specification.Scope
-import java.io.DataOutputStream
 
 /**
  * 
  * @author <a href="http://twitter.com/aloyer">@aloyer</a>
  */
-class DiskStoreSpec extends Specification {
+class DiskStoreStep1Spec extends Specification {
 
   import precog.util.BytesImplicits._
 
@@ -58,8 +57,6 @@ class DiskStoreSpec extends Specification {
   }
 }
 
-
-
 class BasicBinaryStore extends BinaryStore {
   var addresses:Map[Bytes, Address] = Map()
   private val offset = new AtomicLong()
@@ -93,8 +90,8 @@ class BasicIndexStore extends IndexStore {
     @tailrec
     def iter(values: Iterator[(Bytes, Address)], reader: IndexReader[A]): A =
       reader match {
-        case IndexDone(a) => a
-        case IndexMore(r) =>
+        case IndexReader.Done(a) => a
+        case IndexReader.More(r) =>
           if (values.hasNext) {
             val next = values.next()
             // TODO comparator on bytes directly

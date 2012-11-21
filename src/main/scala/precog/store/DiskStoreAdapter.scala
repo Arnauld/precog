@@ -30,8 +30,8 @@ class DiskStoreAdapter(valueStore:BinaryStore,
 
   def wrapReader[A](reader: Reader[A]): IndexReader[A] =
     reader match {
-      case Done(v) => IndexDone(v)
-      case More(f) => IndexMore({(x:Option[(Bytes, Address)]) =>
+      case Done(v) => IndexReader.Done(v)
+      case More(f) => IndexReader.More({(x:Option[(Bytes, Address)]) =>
         x match {
           case None => wrapReader[A](f(None))
           case Some(t) =>

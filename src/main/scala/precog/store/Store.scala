@@ -8,12 +8,13 @@ import precog.util.Bytes
 
 case class Address(var offset:Long)
 
-trait PageStore {
-}
+
 
 sealed trait IndexReader[B]
-case class IndexMore[B](value: Option[(Bytes, Address)] => IndexReader[B]) extends IndexReader[B]
-case class IndexDone[B](value: B) extends IndexReader[B]
+object IndexReader {
+  case class More[B](value: Option[(Bytes, Address)] => IndexReader[B]) extends IndexReader[B]
+  case class Done[B](value: B) extends IndexReader[B]
+}
 
 
 trait IndexStore {
@@ -24,7 +25,6 @@ trait IndexStore {
   def get(key: Bytes): Option[Address]
 
   def put(key: Bytes, address: Address): Unit
-
 }
 
 trait BinaryStore {
