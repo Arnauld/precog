@@ -1,5 +1,7 @@
 package precog.store
 
+import precog.util.Bytes
+
 /**
  * 
  * @author <a href="http://twitter.com/aloyer">@aloyer</a>
@@ -7,12 +9,12 @@ package precog.store
 class DiskStoreAdapter(valueStore:BinaryStore,
                        indexStorage:IndexStore) extends DiskStore {
   def put(key: Array[Byte], value: Array[Byte]) {
-    val address = valueStore.addressOf(value)
-    indexStorage.put(key, address)
+    val address = valueStore.addressOf(Bytes(value))
+    indexStorage.put(Bytes(key), address)
   }
 
   def get(key: Array[Byte]) =
-    indexStorage.get(key) match {
+    indexStorage.get(Bytes(key)) match {
       case Some(address) => valueStore.get(address)
       case _ => None
     }
@@ -29,11 +31,11 @@ class DiskStoreAdapter(valueStore:BinaryStore,
   def wrapReader[A](reader: Reader[A]): IndexReader[A] =
     reader match {
       case Done(v) => IndexDone(v)
-      case More(f) => IndexMore({(x:Option[(Array[Byte], Address)]) =>
+      case More(f) => IndexMore({(x:Option[(Bytes, Address)]) =>
         x match {
           case None => wrapReader[A](f(None))
           case Some(t) =>
-            val kv = (t._1, valueStore.get(t._2).get)
+            val kv = (t._1.raw, valueStore.get(t._2).get)
             val nextReader = f(Some(kv))
             wrapReader[A](nextReader)
         }
@@ -41,5 +43,5 @@ class DiskStoreAdapter(valueStore:BinaryStore,
     }
 
   def traverse[A](start: Array[Byte], end: Array[Byte])(reader: Reader[A]) =
-    indexStorage.query(start, end, wrapReader(reader))
+    indexStorage.query(Bytes(start), Bytes(end), wrapReader(reader))
 }

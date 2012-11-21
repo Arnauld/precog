@@ -6,6 +6,7 @@ import precog.util.{Bytes, BytesComparator}
 import java.util.concurrent.atomic.AtomicLong
 import scala.Array
 import org.specs2.specification.Scope
+import java.io.DataOutputStream
 
 /**
  * 
@@ -13,7 +14,7 @@ import org.specs2.specification.Scope
  */
 class DiskStoreSpec extends Specification {
 
-  implicit def bytes(s:String) = s.getBytes("utf-8")
+  import precog.util.BytesImplicits._
 
   "DiskStore" should {
     "be sure that Duplicate values cannot be stored more than once" in new basicStoreScope {
@@ -24,15 +25,29 @@ class DiskStoreSpec extends Specification {
       store.put("1", "John Doe")
       store.put("2", "John Doe")
       store.put("3", "John Doe")
-      store.put("4", "John Doe")
-      store.put("5", "John Doe")
+      store.put(4,   "John Doe")
+      store.put(5,   "John Doe")
 
-      val soleEntry = (Bytes("John Doe") -> Address(Some(0)))
-
+      val soleEntry = (Bytes("John Doe") -> Address(0L))
       valueStore.addresses.toList must contain(soleEntry).only
-
     }
 
+    "be sure that even Duplicate values can be retrieved" in new basicStoreScope {
+      store.put("1", "John Doe")
+      store.put("2", "John Doe")
+      store.put("3", "John Doe")
+      store.put(4,   "John Doe")
+      store.put(5,   "John Doe")
+
+      assertSomeBytes(store.get("1"), "John Doe")
+      assertSomeBytes(store.get("2"), "John Doe")
+      assertSomeBytes(store.get("3"), "John Doe")
+      assertSomeBytes(store.get(4), "John Doe")
+      assertSomeBytes(store.get(5), "John Doe")
+    }
+
+    def assertSomeBytes(actual:Option[Array[Byte]], expected:Array[Byte]) =
+      actual.map(Bytes(_)) must_== Some(Bytes(expected))
   }
 
   trait basicStoreScope extends Scope {
@@ -51,12 +66,11 @@ class BasicBinaryStore extends BinaryStore {
 
   override def flush() {}
   override def get(address: Address) = addresses.find(_._2 == address).map(_._1.raw)
-  override def addressOf(value: Array[Byte]) = {
-    val bytes = Bytes(value)
+  override def addressOf(bytes: Bytes) = {
     addresses.get(bytes) match {
       case Some(addr) => addr
       case None =>
-        val address = Address(Some(offset.getAndAdd(value.length)))
+        val address = Address(offset.getAndAdd(bytes.length()))
         addresses = addresses + (bytes -> address)
         address
     }
@@ -64,26 +78,27 @@ class BasicBinaryStore extends BinaryStore {
 }
 
 class BasicIndexStore extends IndexStore {
-  var values: Map[Array[Byte], Address] = Map()
+  var values: Map[Bytes, Address] = Map()
   var comparator = BytesComparator
 
-  def put(key: Array[Byte], value: Address) {
+  override def put(key: Bytes, value: Address) {
     values = values + (key -> value)
   }
 
-  def get(key: Array[Byte]) = values.get(key)
+  override def get(key: Bytes) = values.get(key)
 
-  def flush() {}
+  override def flush() {}
 
-  def query[A](start: Array[Byte], end: Array[Byte], reader:IndexReader[A]):A = {
+  override def query[A](start: Bytes, end: Bytes, reader:IndexReader[A]):A = {
     @tailrec
-    def iter(values: Iterator[(Array[Byte], Address)], reader: IndexReader[A]): A =
+    def iter(values: Iterator[(Bytes, Address)], reader: IndexReader[A]): A =
       reader match {
         case IndexDone(a) => a
         case IndexMore(r) =>
           if (values.hasNext) {
             val next = values.next()
-            if (comparator.between(next._1, start, end)) {
+            // TODO comparator on bytes directly
+            if (comparator.between(next._1.raw, start.raw, end.raw)) {
               val nextReader = r(Some(next))
               iter(values, nextReader)
             }
@@ -94,7 +109,6 @@ class BasicIndexStore extends IndexStore {
             val nextReader = r(None)
             iter(values, nextReader)
           }
-
       }
     iter(values.iterator, reader)
   }

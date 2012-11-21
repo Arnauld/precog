@@ -1,27 +1,29 @@
 package precog.store
 
+import precog.util.Bytes
+
 /**
  * @author <a href="http://twitter.com/aloyer">@aloyer</a>
  */
 
-case class Address(var offset:Option[Long])
+case class Address(var offset:Long)
 
 trait PageStore {
 }
 
 sealed trait IndexReader[B]
-case class IndexMore[B](value: Option[(Array[Byte], Address)] => IndexReader[B]) extends IndexReader[B]
+case class IndexMore[B](value: Option[(Bytes, Address)] => IndexReader[B]) extends IndexReader[B]
 case class IndexDone[B](value: B) extends IndexReader[B]
 
 
 trait IndexStore {
-  def query[B](start: Array[Byte], end: Array[Byte], reader:IndexReader[B]):B
+  def query[B](start: Bytes, end: Bytes, reader:IndexReader[B]):B
 
   def flush(): Unit
 
-  def get(key: Array[Byte]): Option[Address]
+  def get(key: Bytes): Option[Address]
 
-  def put(key: Array[Byte], address: Address): Unit
+  def put(key: Bytes, address: Address): Unit
 
 }
 
@@ -46,5 +48,5 @@ trait BinaryStore {
    * @param value that need to be stored
    * @return
    */
-  def addressOf(value:Array[Byte]):Address
+  def addressOf(value:Bytes):Address
 }
