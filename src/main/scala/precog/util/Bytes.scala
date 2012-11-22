@@ -3,6 +3,12 @@ package precog.util
 
 object BytesImplicits {
   /**
+   *
+   */
+  implicit def bytes(bytes:Array[Byte]) = Bytes(bytes)
+
+
+  /**
    * Convert a <code>String</code> to an array of bytes using its <code>utf-8</code> representation.
    */
   implicit def bytes(s: String): Array[Byte] = s.getBytes("utf-8")
@@ -86,6 +92,9 @@ object BytesRandomAcess {
   def apply(bytes: Array[Byte], inuse: Int) = new BytesRandomAcess {
     private var _writeOffset = inuse
 
+
+    def size = _writeOffset
+
     override def append(content: Array[Byte]):Long = {
       val offset = _writeOffset
       _writeOffset += content.length
@@ -100,6 +109,14 @@ object BytesRandomAcess {
 }
 
 trait BytesRandomAcess {
+  /**
+   * @return the number of Byte actually contained/written in the underlying "storage".
+   */
+  def size:Long
+
+  /**
+   * @return the offset from where the content start
+   */
   def append(content: Array[Byte]): Long
 
   def read(offset: Int, amount: Int, dst: Array[Byte])

@@ -15,9 +15,11 @@ trait PageStore {
 }
 
 sealed trait PageType
-case object IndexRootNode extends PageType
-case object IndexNode extends PageType
-case object BinaryRootNode extends PageType
-case object BinaryNode extends PageType
+object PageType {
+  case object IndexRootNode extends PageType
+  case object IndexNode extends PageType
+  case object BinaryRootNode extends PageType
+  case object BinaryNode extends PageType
+}
 
 case class Page(pageType:PageType, raw:Bytes)

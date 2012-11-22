@@ -4,6 +4,7 @@ import precog.util.{BytesRandomAcess, Bytes}
 import annotation.tailrec
 
 trait PageStoreBytesSupport {
+  import PageType._
   def codeFor(pageType:PageType) = (pageType match {
     case IndexRootNode => 0
     case IndexNode => 1
@@ -47,16 +48,17 @@ trait PageStoreBytesSupport {
     val headerBytes = new Array[Byte](sizeOfHeader)
     headerBytes(0) = codeFor(pageType)
     Bytes.writeLong(1, headerBytes, contentSize)
+
     content.append(headerBytes)
   }
 
   def loadPage(offset:Long, content:BytesRandomAcess):Page = {
     val header  = loadHeader(offset, content)
-    val rawData = new Array[Byte](header.contentSize.asInstanceOf[Int])
-    content.read((offset + sizeOfHeader).asInstanceOf[Int], header.contentSize.asInstanceOf[Int], rawData)
+    val contentSize = header.contentSize.asInstanceOf[Int]
+    val rawData = new Array[Byte](contentSize)
+    content.read((offset + sizeOfHeader).asInstanceOf[Int], contentSize, rawData)
     Page(pageTypeFor(header.pageCode), Bytes(rawData))
   }
-
 
   def writePage(content:BytesRandomAcess, pageType: PageType, bytes: Bytes) = {
     val pageOffset = writeHeader(content, pageType, bytes.length())
@@ -76,18 +78,15 @@ case class PageHeader(pageCode:Byte, contentSize:Long)
  */
 
 object InMemoryPageStore {
-  def apply():PageStore = InMemoryPageStore(8*1024)
-  def apply(capacity:Int):PageStore = new PageStoreBytesAdapter {
-    val rawContent = BytesRandomAcess(new Array[Byte](capacity), 0)
-    val initialOffset = 0L
-  }
+  def apply():InMemoryPageStore = InMemoryPageStore(8*1024)
+  def apply(capacity:Int):InMemoryPageStore = new InMemoryPageStore(BytesRandomAcess(new Array[Byte](capacity), 0))
+  def apply(rawContent:BytesRandomAcess):InMemoryPageStore = new InMemoryPageStore(rawContent)
 }
+
+class InMemoryPageStore(val rawContent:BytesRandomAcess) extends PageStoreBytesAdapter
 
 trait PageStoreBytesAdapter extends PageStore with PageStoreBytesSupport {
   def rawContent:BytesRandomAcess
-  def initialOffset:Long
-
-  private var offset = initialOffset
 
   override def loadPage(address: Address): Page = loadPage(address.offset, rawContent)
 
@@ -105,13 +104,11 @@ trait PageStoreBytesAdapter extends PageStore with PageStoreBytesSupport {
           rewind(footer.pageStartOffset)
       }
     }
-    rewind(offset)
-
+    rewind(rawContent.size)
   }
 
   override def writePage(pageType: PageType, raw: Bytes):Address = {
     val address = writePage(rawContent, pageType, raw)
-    offset += sizeOfHeader + sizeOfFooter + raw.length()
     Address(address)
   }
 
