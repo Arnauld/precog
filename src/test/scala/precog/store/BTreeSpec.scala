@@ -15,14 +15,11 @@ class BTreeSpec extends Specification {
   import precog.util.BytesImplicits._
 
   "BTree" should {
-    "have a default threshold of 4" in {
-      BTree.N must_== 4
-    }
 
     "handle insert in an empty tree" in {
       val blockStore = mapBasedBlockStore
 
-      val tree = new BTree(blockStore, BytesComparator, null)
+      val tree = new BTree(blockStore, BytesComparator, null, 4)
         .insert(bytes("aaa"), Address(15L))
 
       tree.find(bytes("aaa")) must_== Some(Address(15L))
@@ -31,7 +28,7 @@ class BTreeSpec extends Specification {
     "handle insert of at least its threshold elements" in {
       val blockStore = mapBasedBlockStore
 
-      val tree = new BTree(blockStore, BytesComparator, null)
+      val tree = new BTree(blockStore, BytesComparator, null, 4)
         .insert(bytes("aaa"), Address(15L))
         .insert(bytes("ddd"), Address(45L))
         .insert(bytes("dda"), Address(55L))
@@ -54,7 +51,7 @@ class BTreeSpec extends Specification {
     "handle more entries than its node threshold" in {
       val blockStore = mapBasedBlockStore
 
-      val tree = new BTree(blockStore, BytesComparator, null)
+      val tree = new BTree(blockStore, BytesComparator, null, 4)
                       .insert(bytes("aaa"), Address(15L))
                       .insert(bytes("ddd"), Address(45L))
                       .insert(bytes("dda"), Address(55L))
@@ -73,25 +70,25 @@ class BTreeSpec extends Specification {
 
     1.to(20).foreach { amount =>
       "support " + amount + " insert(s) in order" in {
-        checkForANumerberOfInsert(amount = amount, shuffle = false)
+        checkForANumerberOfInsert(amount = amount, blockSize = 4, shuffle = false)
       }
     }
 
     1.to(20).foreach { amount =>
       "support " + amount + " insert(s) in any order" in {
-        checkForANumerberOfInsert(amount = amount, shuffle = true)
+        checkForANumerberOfInsert(amount = amount, blockSize = 4, shuffle = true)
       }
     }
 
-    "support a big amount of insert in any order" in {
-      checkForANumerberOfInsert(amount = 1000, shuffle = true)
+    "support a big amount of insert in any order (blocksize: 4)" in {
+      checkForANumerberOfInsert(amount = 1000, blockSize = 4, shuffle = true)
     }
 
-    "support the insert of 9 entries in order" in {
-      checkForANumerberOfInsert(amount = 9, shuffle = false)
+    "support a big amount of insert in any order (blocksize: 8)" in {
+      checkForANumerberOfInsert(amount = 1000, blockSize = 8, shuffle = true)
     }
 
-    def checkForANumerberOfInsert(amount:Int, shuffle:Boolean) {
+    def checkForANumerberOfInsert(amount:Int, blockSize:Int, shuffle:Boolean) {
       val empty:List[(String,Address)] = Nil
       val items = 1.to(amount).foldLeft((empty,"")) ( {(elems, index) =>
         val value = Address(index)
@@ -101,7 +98,7 @@ class BTreeSpec extends Specification {
       })
 
       val blockStore = mapBasedBlockStore
-      val tree0 = new BTree(blockStore, BytesComparator, null)
+      val tree0 = new BTree(blockStore, BytesComparator, null, blockSize)
       val tree1 = (if(shuffle)
                     Random.shuffle(items._1)
                    else
@@ -116,7 +113,7 @@ class BTreeSpec extends Specification {
 
     "replace a value when if the same key is reinserted" in {
       val blockStore = mapBasedBlockStore
-      val tree = new BTree(blockStore, BytesComparator, null)
+      val tree = new BTree(blockStore, BytesComparator, null, 4)
         .insert(bytes("aaa"), Address(15L))
         .insert(bytes("ddd"), Address(45L))
         .insert(bytes("dda"), Address(55L))

@@ -8,21 +8,24 @@ trait BlockStore {
   def writeBlock(node:Node): Address
 }
 
-object BTree {
-  val N = 4
-}
-
 /**
  * Inspired directly from:
  * <a href="https://github.com/Arnauld/mochusi/blob/master/src/mbtree.erl">mbtree.erl</a>
+ *
+ * @param blockStore where nodes are stored
+ * @param comparator used to compare key for orering
+ * @param rootAddress tree's root address
+ * @param n block size threshold
+ *
  * @author <a href="http://twitter.com/aloyer">@aloyer</a>
  */
-class BTree(blockStore:BlockStore, comparator:RichComparator[Array[Byte]], val rootAddress:Address) {
+class BTree(blockStore:BlockStore,
+            comparator:RichComparator[Array[Byte]],
+            val rootAddress:Address,
+            val n:Int) {
 
   type K = Array[Byte]
   type V = Address
-
-  var n:Int = 0 // Item count
 
   private def compare(k1: K, k2: K) = comparator.compare(k1, k2)
 
@@ -62,6 +65,8 @@ class BTree(blockStore:BlockStore, comparator:RichComparator[Array[Byte]], val r
           traverseKPToFind(key, tail)
         else
           find(head.address, key)
+      case Nil =>
+        throw new IllegalStateException("Pairs must have at least one element to exist")
     }
 
   /**
@@ -73,16 +78,15 @@ class BTree(blockStore:BlockStore, comparator:RichComparator[Array[Byte]], val r
 
     insert_1(rootAddress, key, value, 0) match {
       case Ok(newAddr) =>
-        new BTree(blockStore, comparator, newAddr)
+        new BTree(blockStore, comparator, newAddr, n)
       case Split(splitKey, left, right) =>
         val newNode   = KPNode(KP(splitKey, left), KP(null, right))
-        new BTree(blockStore, comparator, blockStore.writeBlock(newNode))
+        new BTree(blockStore, comparator, blockStore.writeBlock(newNode), n)
     }
   }
 
   private def createKPNode(pairs: List[KP], depth:Int): InsertR = {
-    //println("  ".*(depth) + "createKPNode: " + pairs + ")")
-    if (pairs.size > BTree.N) {
+    if (pairs.size > n) {
       // node must be splitted
       val (left, head::rightTail) = pairs.splitAt(pairs.size / 2)
       val leftPairs = left ++ List(KP(null, head.address))
@@ -90,38 +94,29 @@ class BTree(blockStore:BlockStore, comparator:RichComparator[Array[Byte]], val r
       val newRightNode = KPNode(rightTail)
       val newLeftAddr = blockStore.writeBlock(newLeftNode)
       val newRightAddr = blockStore.writeBlock(newRightNode)
-      val r = Split(head.key, newLeftAddr, newRightAddr)
-      //println("  ".*(depth) + "createKPNode: => " + newLeftNode+ ", " + newRightNode + " ~"+ r)
-      r
+      Split(head.key, newLeftAddr, newRightAddr)
     }
     else {
       val node = KPNode(pairs)
       val addr = blockStore.writeBlock(node)
-      val r = Ok(addr)
-      //println("  ".*(depth) + "createKPNode: => " + node + " ~" + r)
-      r
+      Ok(addr)
     }
   }
 
   private def createKVNode(pairs: List[KV], depth:Int): InsertR = {
-    //println("  ".*(depth) + "createKVNode: " + pairs + ")")
-    if (pairs.size > BTree.N) {
+    if (pairs.size > n) {
       // leaf node must be splitted
       val (leftPairs, rightPairs) = pairs.splitAt((pairs.size / 2) + 1)
       val newLeftNode = KVNode(leftPairs)
       val newRightNode = KVNode(rightPairs)
       val newLeftAddr = blockStore.writeBlock(newLeftNode)
       val newRightAddr = blockStore.writeBlock(newRightNode)
-      val r = Split(rightPairs.head.key, newLeftAddr, newRightAddr)
-      //println("  ".*(depth) + "createKVNode: => " + newLeftNode+ ", " + newRightNode + " ~"+ r)
-      r
+      Split(rightPairs.head.key, newLeftAddr, newRightAddr)
     }
     else {
       val node = KVNode(pairs)
       val addr = blockStore.writeBlock(node)
-      val r = Ok(addr)
-      //println("  ".*(depth) + "createKVNode: => " + node + " ~" + r)
-      r
+      Ok(addr)
     }
   }
 
@@ -133,24 +128,17 @@ class BTree(blockStore:BlockStore, comparator:RichComparator[Array[Byte]], val r
     }
     else {
       val block = blockStore.readBlock(addr)
-      //println("  ".*(depth) + "insert_1(" + new String(key) + ", block: " + block + ")")
       block match {
         // non-leaf cases
         case KPNode(pairs) =>
-          val a@(kp, reversedTaversed, tail) = traverseKPPairs(key, Nil, pairs)
-          //println("  ".*(depth) + "insert_1: KP:case, " + a)
+          val (kp, reversedTaversed, tail) = traverseKPPairs(key, Nil, pairs)
 
           val newPairs:List[KP] = insert_1(kp.address, key, value, depth + 1) match {
             case Ok(newAddr) =>
-              //println("  ".*(depth) + "insert_1: Ok(" + newAddr + ")")
-              //println("  ".*(depth) + "insert_1: " + reversedTaversed + " ::: " + tail)
               val reversed = (KP(kp.key, newAddr) :: reversedTaversed).reverse_:::(tail)
-              //println("  ".*(depth) + "  >> " + reversed)
               reversed.reverse
 
             case Split(splitKey, left, right) =>
-              //println("  ".*(depth) + "insert_1: Split(" + new String(splitKey) + ", left: " + left + ", right: " + right + ") ... ")
-              //println("  ".*(depth) + "...  reversedTaversed: " + reversedTaversed + ", tail: " + tail)
               val newKP = KP(splitKey, left)
               // leaf child has been splitted: generate a new bucket
               tail match {
@@ -158,11 +146,7 @@ class BTree(blockStore:BlockStore, comparator:RichComparator[Array[Byte]], val r
                   val lastKP = KP(null, right)
                   val reversed = (newKP :: reversedTaversed).reverse_:::(List(lastKP))
                   reversed.reverse
-                case last::Nil => // replace next addr
-                  val newNext = KP(kp.key, right)
-                  val reversed = (newNext :: newKP :: reversedTaversed).reverse_:::(tail)
-                  reversed.reverse
-                case next::tail1 => // replace next addr
+                case _ => // replace next addr
                   val newNext = KP(kp.key, right)
                   val reversed = (newNext :: newKP :: reversedTaversed).reverse_:::(tail)
                   reversed.reverse
@@ -215,14 +199,16 @@ class BTree(blockStore:BlockStore, comparator:RichComparator[Array[Byte]], val r
 
   def traverseInOrder[A](f:(K,V,A) => A, arg:A):A = traverseInOrder_addr(rootAddress, f, arg)
 
-  private def traverseInOrder_addr[A](addr:Address, f:(K,V,A) => A, arg:A):A =
+  private def traverseInOrder_addr[A](addr:Address, f:(K,V,A) => A, arg:A):A = {
     blockStore.readBlock(addr) match {
       case KPNode(pairs) =>
         traverseInOrder_kp(pairs, f, arg)
       case KVNode(pairs) =>
         traverseInOrder_kv(pairs, f, arg)
     }
+  }
 
+  @tailrec
   private def traverseInOrder_kp[A](pairs:List[KP], f:(K,V,A) => A, arg:A):A =
     pairs match {
       case Nil  => arg
@@ -231,6 +217,7 @@ class BTree(blockStore:BlockStore, comparator:RichComparator[Array[Byte]], val r
         traverseInOrder_kp(tail, f, arg1)
     }
 
+  @tailrec
   private def traverseInOrder_kv[A](pairs:List[KV], f:(K,V,A) => A, arg:A):A =
     pairs match {
       case Nil  => arg
@@ -249,14 +236,6 @@ sealed trait InsertR
 case class Ok(newNode:Address) extends InsertR
 case class Split(splitKey:Array[Byte], left:Address, right:Address) extends InsertR
 
-class DuplicateValueException extends Exception
-
-trait Visitor {
-  def visit(kp:KP)
-  def visit(kp:KPNode)
-  def visit(kp:KV)
-  def visit(kp:KVNode)
-}
 
 sealed trait Node
 
