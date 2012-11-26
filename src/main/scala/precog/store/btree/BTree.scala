@@ -1,19 +1,15 @@
-package precog.store
+package precog.store.btree
 
 import precog.util.RichComparator
 import annotation.tailrec
-
-trait BlockStore {
-  def readBlock(address: Address): Node
-  def writeBlock(node:Node): Address
-}
+import precog.store.Address
 
 /**
  * Inspired directly from:
  * <a href="https://github.com/Arnauld/mochusi/blob/master/src/mbtree.erl">mbtree.erl</a>
  *
  * @param blockStore where nodes are stored
- * @param comparator used to compare key for orering
+ * @param comparator used to compare key for ordering
  * @param rootAddress tree's root address
  * @param n block size threshold
  *
@@ -24,15 +20,20 @@ class BTree(blockStore:BlockStore,
             val rootAddress:Address,
             val n:Int) {
 
+  // TODO replace by generics in the BTree definition
   type K = Array[Byte]
   type V = Address
 
   private def compare(k1: K, k2: K) = comparator.compare(k1, k2)
 
   /**
-   * Retrieve a value based on its Key
+   * Retrieve a <code>value</code> based on its <code>key</code>
    */
-  def find(key:K):Option[V] = find(rootAddress, key)
+  def find(key:K):Option[V] = {
+    assert(key!=null, "Key cannot be null")
+
+    find(rootAddress, key)
+  }
 
   private def find(addr:Address, key:K):Option[V] =
     blockStore.readBlock(addr) match {
@@ -55,7 +56,6 @@ class BTree(blockStore:BlockStore,
           Some(head.value)
     }
 
-
   private def traverseKPToFind(key:K, pairs:List[KP]) : Option[V] =
     pairs match {
       case last::Nil => find(last.address, key)
@@ -70,9 +70,15 @@ class BTree(blockStore:BlockStore,
     }
 
   /**
+   * Associates the specified <code>value</code> with the specified
+   * <code>key</code> in this BTree. If the BTree previously contained
+   * a mapping for the key, the old value is replaced by the specified
+   * value.
    *
+   * @return an new updated <code>BTree</code>
    */
   def insert(key:K, value:V):BTree = {
+
     assert(key!=null, "Key cannot be null")
     assert(value!=null, "Value cannot be null")
 
@@ -199,6 +205,9 @@ class BTree(blockStore:BlockStore,
 
   def traverseInOrder[A](f:(K,V,A) => A, arg:A):A = traverseInOrder_addr(rootAddress, f, arg)
 
+
+  // TODO: investigate tailrec that involve 3 methods 'traverseInOrder_*'
+  // or refactor to find a most suitable way to support an equivalent
   private def traverseInOrder_addr[A](addr:Address, f:(K,V,A) => A, arg:A):A = {
     blockStore.readBlock(addr) match {
       case KPNode(pairs) =>
@@ -232,35 +241,15 @@ class BTree(blockStore:BlockStore,
 
 }
 
+/**
+ * Return of an insert: it is used to indicate - when the value was inserted - if the node had been
+ * splitted or not.
+ */
 sealed trait InsertR
+
 case class Ok(newNode:Address) extends InsertR
+
 case class Split(splitKey:Array[Byte], left:Address, right:Address) extends InsertR
 
 
-sealed trait Node
-
-case class KP(key:Array[Byte], address:Address) {
-  override def toString = "KP(" + (if (key==null)
-                                    "n/a"
-                                  else
-                                    new String(key)) + ", " + address + ")"
-}
-case class KPNode(pairs:List[KP]) extends Node {
-  assert(pairs.head.key != null)
-}
-object KPNode {
-  def apply(kp:KP):KPNode = KPNode(List(kp))
-  def apply(kp1:KP, kp2:KP):KPNode = KPNode(List(kp1,kp2))
-}
-
-case class KV(key:Array[Byte], value:Address) {
-  override def toString = "KV(" + new String(key) /*+ ", " + value */+ ")"
-}
-case class KVNode(pairs:List[KV]) extends Node {
-  def this(kv:KV) = this(List(kv))
-}
-object KVNode {
-  def apply(kv:KV):KVNode = KVNode(List(kv))
-  def apply(kv1:KV, kv2:KV):KVNode = KVNode(List(kv1,kv2))
-}
 

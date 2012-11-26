@@ -1,4 +1,4 @@
-package precog.store
+package precog.store.btree
 
 ;
 
@@ -6,6 +6,7 @@ import org.specs2.mutable.Specification
 import precog.util.BytesComparator
 import java.util.concurrent.atomic.AtomicLong
 import util.Random
+import precog.store.Address
 
 /**
  * @author <a href="http://twitter.com/aloyer">@aloyer</a>

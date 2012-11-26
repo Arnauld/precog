@@ -22,6 +22,21 @@ object Hash {
     }
   }
 
+  val Elf:Hash = new Hash {
+    def hash(bytes: Array[Byte]) =
+      bytes.foldLeft(0L)({ (hash,b) =>
+        var h = (hash << 4) + b
+        val x = h & 0xF0000000L
+
+        if(x != 0)
+        {
+          h ^= (x >> 24)
+        }
+        h &= ~x
+        h
+      })
+  }
+
   private val md5Digest = MessageDigest.getInstance("MD5")
 
   def md5(bytes: Array[Byte]):Array[Byte] = {
