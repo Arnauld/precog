@@ -11,6 +11,10 @@ trait Hash {
 }
 
 object Hash {
+
+  implicit def hashForArray(hash:Hash) = (x:Array[Byte]) => hash.hash(x)
+  implicit def hashForBytes(hash:Hash) = (x:Bytes) => hash.hash(x.raw)
+
   val Ketama:Hash = new Hash {
     def hash(bytes: Array[Byte]) = {
       val bKey = md5(bytes)

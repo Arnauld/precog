@@ -15,7 +15,7 @@ import precog.store.Address
  *
  * @author <a href="http://twitter.com/aloyer">@aloyer</a>
  */
-class BTree(blockStore:BlockStore,
+class BTree(blockStore:NodeStore,
             comparator:RichComparator[Array[Byte]],
             val rootAddress:Address,
             val n:Int) {
@@ -36,7 +36,7 @@ class BTree(blockStore:BlockStore,
   }
 
   private def find(addr:Address, key:K):Option[V] =
-    blockStore.readBlock(addr) match {
+    blockStore.readNode(addr) match {
       case KPNode(pairs) =>
         traverseKPToFind(key, pairs)
       case KVNode(pairs) =>
@@ -87,7 +87,7 @@ class BTree(blockStore:BlockStore,
         new BTree(blockStore, comparator, newAddr, n)
       case Split(splitKey, left, right) =>
         val newNode   = KPNode(KP(splitKey, left), KP(null, right))
-        new BTree(blockStore, comparator, blockStore.writeBlock(newNode), n)
+        new BTree(blockStore, comparator, blockStore.writeNode(newNode), n)
     }
   }
 
@@ -98,13 +98,13 @@ class BTree(blockStore:BlockStore,
       val leftPairs = left ++ List(KP(null, head.address))
       val newLeftNode = KPNode(leftPairs)
       val newRightNode = KPNode(rightTail)
-      val newLeftAddr = blockStore.writeBlock(newLeftNode)
-      val newRightAddr = blockStore.writeBlock(newRightNode)
+      val newLeftAddr = blockStore.writeNode(newLeftNode)
+      val newRightAddr = blockStore.writeNode(newRightNode)
       Split(head.key, newLeftAddr, newRightAddr)
     }
     else {
       val node = KPNode(pairs)
-      val addr = blockStore.writeBlock(node)
+      val addr = blockStore.writeNode(node)
       Ok(addr)
     }
   }
@@ -115,13 +115,13 @@ class BTree(blockStore:BlockStore,
       val (leftPairs, rightPairs) = pairs.splitAt((pairs.size / 2) + 1)
       val newLeftNode = KVNode(leftPairs)
       val newRightNode = KVNode(rightPairs)
-      val newLeftAddr = blockStore.writeBlock(newLeftNode)
-      val newRightAddr = blockStore.writeBlock(newRightNode)
+      val newLeftAddr = blockStore.writeNode(newLeftNode)
+      val newRightAddr = blockStore.writeNode(newRightNode)
       Split(rightPairs.head.key, newLeftAddr, newRightAddr)
     }
     else {
       val node = KVNode(pairs)
-      val addr = blockStore.writeBlock(node)
+      val addr = blockStore.writeNode(node)
       Ok(addr)
     }
   }
@@ -129,11 +129,11 @@ class BTree(blockStore:BlockStore,
   private def insert_1(addr:Address, key:K, value:V, depth:Int):InsertR =
     if (addr == null) { // empty tree
       val node = KVNode(KV(key, value))
-      val nodeAddr = blockStore.writeBlock(node)
+      val nodeAddr = blockStore.writeNode(node)
       Ok(nodeAddr)
     }
     else {
-      val block = blockStore.readBlock(addr)
+      val block = blockStore.readNode(addr)
       block match {
         // non-leaf cases
         case KPNode(pairs) =>
@@ -209,7 +209,7 @@ class BTree(blockStore:BlockStore,
   // TODO: investigate tailrec that involve 3 methods 'traverseInOrder_*'
   // or refactor to find a most suitable way to support an equivalent
   private def traverseInOrder_addr[A](addr:Address, f:(K,V,A) => A, arg:A):A = {
-    blockStore.readBlock(addr) match {
+    blockStore.readNode(addr) match {
       case KPNode(pairs) =>
         traverseInOrder_kp(pairs, f, arg)
       case KVNode(pairs) =>

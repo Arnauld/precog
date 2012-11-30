@@ -128,24 +128,24 @@ class BTreeSpec extends Specification {
     }
   }
 
-  def mapBasedBlockStore = new BlockStore {
+  def mapBasedBlockStore = new NodeStore {
     val addrGen = new AtomicLong()
     var map:Map[Long, Node] = Map()
-    def readBlock(address: Address) = map.get(address.offset).get
+    def readNode(address: Address) = map.get(address.offset).get
 
-    def writeBlock(node: Node) = {
+    def writeNode(node: Node) = {
       val nAddr = addrGen.incrementAndGet()
       map = map + (nAddr -> node)
       Address(nAddr)
     }
   }
 
-  def dump(tree: BTree, store: BlockStore) {
+  def dump(tree: BTree, store: NodeStore) {
     dump(tree.rootAddress, store, 1)
   }
 
-  def dump(addr:Address, store:BlockStore, indent:Int) {
-    val rootBlock: Node = store.readBlock(addr)
+  def dump(addr:Address, store:NodeStore, indent:Int) {
+    val rootBlock: Node = store.readNode(addr)
     println("  ".*(indent) + addr + ": " + rootBlock)
     rootBlock match {
       case KVNode(pairs) =>

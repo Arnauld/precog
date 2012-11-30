@@ -17,6 +17,8 @@ import precog.store.Address
 sealed trait Node
 
 /**
+ * Key-Pointer tuple:
+ *
  * Key based indirection to a node (non-leaf).
  */
 case class KP(key: Array[Byte], address: Address) {
@@ -39,6 +41,8 @@ object KPNode {
 }
 
 /**
+ * Key-Value tuple:
+ *
  * Key based indirection to a value (leaf)
  */
 case class KV(key: Array[Byte], value: Address) {
