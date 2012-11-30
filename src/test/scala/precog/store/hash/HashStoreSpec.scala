@@ -38,7 +38,7 @@ class HashStoreSpec extends Specification {
     }
 
     "support a big amount of insert: " + 2000 + " elements" in {
-      checkForANumerberOfInsert(amount = 2000, pageSz = 24, verbose = false)
+      checkForANumerberOfInsert(amount = 2000, pageSz = 24)
     }
 
     List(32, 64, 128, 256).foreach { pageSz =>
@@ -55,21 +55,6 @@ class HashStoreSpec extends Specification {
           pageFactory = arrayBasedFactory)
       }
     }
-
-
-    "support an even bigger amount of insert: " + 1000000 + " elements" in {
-      skipped("Long running test")
-      checkForANumerberOfInsert(amount = 1000000, pageSz = 64, hash = Hash.Elf)
-    }
-
-    List(64, 128, 256, 512).foreach { pageSz =>
-      "support an even bigger amount of insert: " + 500000 + " elements" in {
-        checkForANumerberOfInsert(amount = 500000,
-          pageSz = pageSz,
-          hash = Hash.Elf,
-          pageFactory = arrayBasedFactory)
-      }
-    }
   }
 
   def arrayBasedFactory = new ArrayBasedPageFactory[Byte,Address]().asInstanceOf[PageFactory[Bytes,Address]]
@@ -77,32 +62,13 @@ class HashStoreSpec extends Specification {
   def checkForANumerberOfInsert(amount:Int,
                                 pageSz:Int = PAGE_SZ,
                                 hash:Hash = Hash.Elf,
-                                verbose:Boolean = false,
                                 pageFactory:PageFactory[Bytes,Address] = new MapBasedPageFactory[Bytes,Address]()) {
-    val startTime = System.nanoTime()
-
     val bucketStore = creatBucketStore
     val hashStore = new HashStore[Bytes, Address](bucketStore, hash, null, pageSz, pageFactory)
-    hashStore.verbose = verbose
 
-    val buffer = new StringBuilder
     for(index <- 1 to amount) {
-      buffer.setLength(0)
-
       val e = entry(index)
-
-      if(verbose) {
-        buffer.append("\n" + ("=".*(40)))
-              .append("\n" + index + "/" + amount + "## Inserting: " + e)
-              .append("\n" + ("-".*(40)))
-      }
       hashStore.put(Bytes(e._1), e._2)
-
-      if(verbose) {
-        dumpHeader(hashStore, hash, buffer)
-        dumpPages(hashStore, hash, buffer)
-        println(buffer)
-      }
     }
 
     // make sure one can now retrieves them
@@ -110,37 +76,7 @@ class HashStoreSpec extends Specification {
       val e = entry(index)
       hashStore.get(Bytes(e._1)) must_== Some(e._2)
     }
-
-    val endTime = System.nanoTime()
-    buffer.setLength(0)
-    buffer.append("Number of items inserted and checked: " + amount + ", page size: " + pageSz + "\n" +
-            "Elapsed time: " + ((endTime - startTime) / 1e6).asInstanceOf[Int] + "ms")
-    dumpHeader(hashStore, hash, buffer)
-    println(buffer)
   }
-
-  def dumpHeader(hashStore:HashStore[Bytes, Address], hash:Hash, out:StringBuilder) {
-    out.append("\nNumber of rehash: " + hashStore.rehash +
-      ", gd: " + hashStore.gd +
-      ", nbPages: " + hashStore.pages.size +
-      " (" + hashStore.numberOfDistinctPages + ")" +
-      " " + hashStore.pageFactory.getClass.getSimpleName +
-      "\n")
-  }
-
-  def dumpPages(hashStore:HashStore[Bytes, Address], hash:Hash, out:StringBuilder) {
-    for(i <- 0 until hashStore.pages.size) {
-      val p = hashStore.pages(i)
-      out.append("[" + i + " : " + formatBinary(i) + "] " +
-        "depth:" + p.depth + ", #" + p.size + " " +
-        "entries [\n  " + p.entries.map[String]({ x:(Bytes,Address) =>
-          formatBinary(hash.hash(x._1.raw).asInstanceOf[Int]) + " " +
-          new String(x._1.raw)
-        }).mkString(",\n  ") + "\n]")
-    }
-  }
-
-  def formatBinary(i:Int) = Integer.toBinaryString(i).reverse.padTo(4, "0").reverse.mkString
 
   def entry(index:Int):(String,Address) = {
     val value = Address(index)

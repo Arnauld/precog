@@ -2,7 +2,6 @@ package precog.store.hash
 
 import precog.store.Address
 import java.util.concurrent.atomic.AtomicInteger
-import scala.collection
 
 /**
  * For more information see
@@ -24,7 +23,15 @@ class HashStore[K,V](bucketStore:BucketStore,
   // Data stuffs
   var gd = 0
   var pages = Array(pageFactory.create(store = this, depth = 0))
+
+  // Stats
   var rehash = 0
+  var reallocTime = 0L
+  var splitTime = 0L
+  var preambuleTime = 0L
+  var preambuleSplitTime = 0L
+  var overallPutTime = 0L
+  var stdPutTime = 0L
 
   private def getPage(h:Long):Page[K,V] = {
     val mask:Long = (1 << gd) - 1
@@ -38,6 +45,7 @@ class HashStore[K,V](bucketStore:BucketStore,
   }
 
   def put(key:K, v:V) {
+    val preambuleBeg = System.nanoTime()
     val h = hashFunction(key)
     val page = getPage(h)
 
@@ -47,22 +55,31 @@ class HashStore[K,V](bucketStore:BucketStore,
       if(verbose)
         println ("put# Page found is full, number of page is doubled (" + pages.size +  "), and bitmask depth increased by 1 (" + gd + ")")
     }
+    val preambuleEnd = System.nanoTime()
+    preambuleTime = preambuleTime + (preambuleEnd - preambuleBeg)
 
     if (full(page) && page.depth < gd) {
+      val preambuleSplitBeg = System.nanoTime()
       if(verbose)
         println ("put# Page found is full, and is depth is lower (" + page.depth + ") than the greatest depth allowed (" + gd + ") rehashing will be triggered")
 
       rehash = rehash + 1
 
       page.put(h, key, v)
-      val (m1, m2) = splitEntries(page)
+      val preambuleSplitEnd = System.nanoTime()
+      preambuleSplitTime = preambuleSplitTime + (preambuleSplitEnd - preambuleSplitBeg)
 
-      val p1 = pageFactory.create(entries = m1, depth = page.depth + 1, store = this)
-      val p2 = pageFactory.create(entries = m2, depth = page.depth + 1, store = this)
+      // split entries in two pages based on the new mask
+      val splitBeg = System.nanoTime()
+      val (p1,p2) = splitPage(page)
+      val splitEnd = System.nanoTime()
+      splitTime = splitTime + (splitEnd - splitBeg)
 
       if (verbose)
         println("put# Page has been splitted, reference will be adjusted")
 
+      // reallocate page reference to the two new pages
+      val reallocBeg = System.nanoTime()
       for(i <- 0 until pages.size if pages(i) == page) {
         if (((i >> page.depth) & 1) == 1) {
           if (verbose)
@@ -75,42 +92,34 @@ class HashStore[K,V](bucketStore:BucketStore,
           pages(i) = p1
         }
       }
+      val reallocEnd = System.nanoTime()
+      reallocTime = reallocTime + (reallocEnd - reallocBeg)
     }
-    else
+    else {
+      val stdPutBeg = System.nanoTime()
       page.put(h, key, v)
-  }
-
-  private val useFunForSplit = false
-  private def splitEntries(page:Page[K,V]) =  if(useFunForSplit)
-                                                splitEntries_funWay(page)
-                                              else
-                                                splitEntries_mutableWay(page)
-
-  private def splitEntries_mutableWay(page:Page[K,V]):(scala.collection.Map[K,V], scala.collection.Map[K,V]) = {
-    val m1 = scala.collection.mutable.Map[K,V]()
-    val m2 = scala.collection.mutable.Map[K,V]()
-
-    for(e <- page.entries) {
-      val k = e._1
-      val h = hashFunction(k) & ((1 << gd) - 1)
-      if (((h >> page.depth) & 1) == 1)
-        m2 += (e._1 -> e._2) // Copy entry, need to check if Map.Entry reuse is also present in scala
-      else
-        m1 += (e._1 -> e._2)
+      val stdPutEnd = System.nanoTime()
+      stdPutTime = stdPutTime + (stdPutEnd - stdPutBeg)
     }
-
-    (m1,m2)
+    val overallPutEnd = System.nanoTime()
+    overallPutTime = overallPutTime + (overallPutEnd - preambuleBeg)
   }
 
-  private def splitEntries_funWay(page:Page[K,V]):(Map[K,V],Map[K,V])  = {
-    page.entries.foldLeft((Map.empty[K,V], Map.empty[K,V]))({ (t, e) =>
-      val k = e._1
-      val h = hashFunction(k) & ((1 << gd) - 1)
-      if ((h | (1 << page.depth)) == h)
-        (t._1, t._2 + e)
+  def splitPage(page:Page[K,V]):(Page[K,V],Page[K,V]) = {
+    val p1 = pageFactory.create(depth = page.depth + 1, store = this)
+    val p2 = pageFactory.create(depth = page.depth + 1, store = this)
+    val pageDepth = page.depth
+    val pMask = ((1 << gd) - 1)
+    page.foreach({(k,v) =>
+      val h = hashFunction(k)
+      val p = h & pMask
+      val dst = if (((p >> pageDepth) & 1) == 1)
+        p2
       else
-        (t._1 + e, t._2 )
+        p1
+      dst.put(h, k, v)
     })
+    (p1,p2)
   }
 
   def get(k:K):Option[V] = {
@@ -131,8 +140,7 @@ object Page {
 
 trait PageFactory[K,V] {
   def create(store:HashStore[K,V],
-             depth:Int,
-             entries:scala.collection.Map[K,V] = Map.empty[K,V]):Page[K,V]
+             depth:Int):Page[K,V]
 }
 
 trait Page[K,V] {
@@ -141,18 +149,25 @@ trait Page[K,V] {
   def size:Int
   def put(hash:Long, key:K, value:V)
   def get(hash:Long, key:K):Option[V]
+
+  // TODO remove me?
   def entries:TraversableOnce[(K,V)]
 
+  // Traverse all entries in the Page
+  // should be more efficient than `#entries`
+  def foreach(f:(K,V) => Unit)
+
   override def equals(o: Any):Boolean =
-    o.isInstanceOf[Page[K,V]] && o.asInstanceOf[Page[K,V]].id == id
+    o.asInstanceOf[Page[K,V]].id == id
 }
 
 class MapBasedPageFactory[K,V] extends PageFactory[K,V] {
-  def create(store: HashStore[K,V], depth: Int, entries: collection.Map[K, V]) =
-    new MapBasedPage[K,V](entries, depth)
+  def create(store: HashStore[K,V], depth: Int) =
+    new MapBasedPage[K,V](depth)
 }
 
-class MapBasedPage[K,V](var entries:scala.collection.Map[K,V], val depth:Int) extends Page[K,V] {
+class MapBasedPage[K,V](val depth:Int) extends Page[K,V] {
+  var entries:scala.collection.Map[K,V] = Map.empty[K,V]
   val id = Page.newId
 
   def size = entries.size
@@ -164,22 +179,22 @@ class MapBasedPage[K,V](var entries:scala.collection.Map[K,V], val depth:Int) ex
   def get(hash:Long, key:K):Option[V] = {
     entries.get(key)
   }
+
+  def foreach(f:(K,V) => Unit) {
+    entries.foreach( e => f(e._1, e._2))
+  }
 }
 
 class ArrayBasedPageFactory[K,V] extends PageFactory[K,V] {
 
-  def create(store: HashStore[K, V], depth: Int, entries: collection.Map[K, V]) =
-    new ArrayBasedPage[K,V](store, depth, entries)
+  def create(store: HashStore[K, V], depth: Int) =
+    new ArrayBasedPage[K,V](store, depth)
 }
 
-class ArrayBasedPage[K,V](store: HashStore[K, V], val depth: Int, initialEntries: collection.Map[K, V]) extends Page[K,V] {
+class ArrayBasedPage[K,V](store: HashStore[K, V], val depth: Int) extends Page[K,V] {
   val id = Page.newId
   private var sz = 0
   private val values = new Array[(K,V,Long)](store.pageSize + 2)
-
-  initialEntries.foreach({ t => values(sz) = (t._1, t._2, store.hashFunction(t._1))
-    sz = sz + 1
-  })
 
   def entries:TraversableOnce[(K,V)] = values.slice(0, sz).map( x => (x._1, x._2) )
 
@@ -203,5 +218,12 @@ class ArrayBasedPage[K,V](store: HashStore[K, V], val depth: Int, initialEntries
       Some(values(idx)._2)
     else
       None
+  }
+
+  def foreach(f:(K,V) => Unit) {
+    for(i <- 0 until sz) {
+      val e = values(i)
+      f(e._1, e._2)
+    }
   }
 }
