@@ -2,6 +2,7 @@ package precog.store.hash
 
 import precog.store.Address
 import java.util.concurrent.atomic.AtomicInteger
+import collection.mutable.ArrayBuffer
 
 /**
  * For more information see
@@ -22,7 +23,7 @@ class HashStore[K,V](bucketStore:BucketStore,
 
   // Data stuffs
   var gd = 0
-  var pages = Array(pageFactory.create(store = this, depth = 0))
+  var pages = Array(pageFactory.create(store = this, depth = 0).index(0))
 
   // Stats
   var rehash = 0
@@ -48,13 +49,15 @@ class HashStore[K,V](bucketStore:BucketStore,
     val preambuleBeg = System.nanoTime()
     val h = hashFunction(key)
     val page = getPage(h)
+    val origSize:Int = pages.length
 
     if (full(page) && page.depth == gd) {
       pages = pages ++ pages
       gd = gd + 1
       if(verbose)
-        println ("put# Page found is full, number of page is doubled (" + pages.size +  "), and bitmask depth increased by 1 (" + gd + ")")
+        println ("put# Page found is full, number of page is doubled (" + pages.length +  "), and bitmask depth increased by 1 (" + gd + ")")
     }
+    val resized = (pages.length != origSize)
     val preambuleEnd = System.nanoTime()
     preambuleTime = preambuleTime + (preambuleEnd - preambuleBeg)
 
@@ -79,17 +82,23 @@ class HashStore[K,V](bucketStore:BucketStore,
         println("put# Page has been splitted, reference will be adjusted")
 
       // reallocate page reference to the two new pages
+      val depth = page.depth
       val reallocBeg = System.nanoTime()
-      for(i <- 0 until pages.size if pages(i) == page) {
-        if (((i >> page.depth) & 1) == 1) {
-          if (verbose)
-            println("  Page #" + i + " reallocated to higher page (2)")
-          pages(i) = p2
-        }
-        else {
-          if (verbose)
-            println("  Page #" + i + " reallocated to lower page (1)")
-          pages(i) = p1
+
+      for(i <- 0 until origSize) {
+        if (pages(i).id == page.id) { // 'if' moved outside of the for expression, for perf. improvement
+          if (highPage(i, depth))
+            pages(i) = p2
+          else
+            pages(i) = p1
+
+          if (resized) {
+            val k = i + origSize
+            if (highPage(k, depth))
+              pages(k) = p2
+            else
+              pages(k) = p1
+          }
         }
       }
       val reallocEnd = System.nanoTime()
@@ -104,6 +113,8 @@ class HashStore[K,V](bucketStore:BucketStore,
     val overallPutEnd = System.nanoTime()
     overallPutTime = overallPutTime + (overallPutEnd - preambuleBeg)
   }
+
+  private def highPage(i:Int, depth:Int) = (((i >> depth) & 1) == 1)
 
   def splitPage(page:Page[K,V]):(Page[K,V],Page[K,V]) = {
     val p1 = pageFactory.create(depth = page.depth + 1, store = this)
@@ -149,6 +160,12 @@ trait Page[K,V] {
   def size:Int
   def put(hash:Long, key:K, value:V)
   def get(hash:Long, key:K):Option[V]
+
+  val indexes = new ArrayBuffer[Int]()
+  def index(idx:Int):Page[K,V] = {
+    indexes.append(idx)
+    this
+  }
 
   // TODO remove me?
   def entries:TraversableOnce[(K,V)]
